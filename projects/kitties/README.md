@@ -34,6 +34,16 @@ cargo run -- --dev
 
 Detailed logs may be shown by running the node with the following environment variables set: `RUST_LOG=debug RUST_BACKTRACE=1 cargo run -- --dev`.
 
+Some useful commands
+
+```bash
+# only check
+SKIP_WASM_BUILD=1 cargo check
+
+# Wasm release, native debug
+WASM_BUILD_TYPE=release cargo run -- --dev
+```
+
 ### Multi-node local testnet
 
 If you want to see the multi-node consensus algorithm in action locally, then you can create a local testnet with two validator nodes for Alice and Bob, who are the initial authorities of the genesis chain that have been endowed with testnet units.
