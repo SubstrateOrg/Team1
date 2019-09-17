@@ -15,8 +15,13 @@
 // along with Substrate.  If not, see <http://www.gnu.org/licenses/>.
 
 use wasm_builder_runner::{build_current_project_with_rustflags, WasmBuilderSource};
+use std::env;
 
 fn main() {
+	let cargo = env::var("CARGO").expect("`CARGO` is always set by cargo.");
+	if cargo.ends_with("rls") {
+		env::set_var("CARGO", cargo.replace("rls", "cargo"));
+	}
 	build_current_project_with_rustflags(
 		"wasm_binary.rs",
 		WasmBuilderSource::Crates("1.0.6"),
