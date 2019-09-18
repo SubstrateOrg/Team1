@@ -1,22 +1,52 @@
 /// Cat Module for runtime
 
-use support::{decl_module, decl_storage, decl_event, StorageValue, dispatch::Result};
+use rstd::prelude::*;
+use codec::{Encode, Decode};
+use support::{decl_module, decl_storage, decl_event, StorageMap, StorageValue, dispatch::Result};
+use sr_primitives::{
+  traits::{
+    Zero, Hash
+  }
+};
 use system::ensure_signed;
 
-/// The module's configuration trait.
-pub trait Trait: system::Trait {
-	// TODO: Add other types and constants required configure this module.
+// for Module test
+mod mock;
+mod tests;
 
+/// The module's configuration trait.
+pub trait Trait: system::Trait + balances::Trait {
 	/// The overarching event type.
 	type Event: From<Event<Self>> + Into<<Self as system::Trait>::Event>;
+}
+
+/// Struct for a Kitty
+#[derive(Encode, Decode, Default, Clone, PartialEq)]
+#[cfg_attr(feature = "std", derive(Debug))]
+pub struct Kitty<Hash, Balance> {
+  id: Hash,
+  dna: Hash,
+  price: Balance,
+  gen: u64,
 }
 
 // This module's storage items.
 decl_storage! {
 	trait Store for Module<T: Trait> as KittyStorage {
-		// Declare storage and getter functions here
+    Owners get(owners): map T::AccountId => Vec<T::Hash>;
+    Kitties get(kitties): map T::Hash => Kitty<T::Hash, T::Balance>;
+    KittiesOwner get(kitties_owner): map T::Hash => T::AccountId;
 	}
 }
+
+decl_event!(
+	pub enum Event<T> where
+    AccountId = <T as system::Trait>::AccountId,
+    Hash = <T as system::Trait>::Hash
+  {
+		NewKitty(Hash, AccountId),
+	}
+);
 
 // The module's dispatchable functions.
 decl_module! {
@@ -26,28 +56,30 @@ decl_module! {
 		// this is needed only if you are using events in your module
 		// fn deposit_event() = default;
 
-		// Just a dummy entry point.
-		// function that can be called by the external world as an extrinsics call
-		// takes a parameter of the type `AccountId`, stores it and emits an event
-		pub fn do_something(origin, something: u32) -> Result {
-			let sender = ensure_signed(origin)?;
+    fn create_kitty(origin, id: T::Hash) -> Result {
+        let sender = ensure_signed(origin)?;
 
-			// here we are raising the Something event
-			// Self::deposit_event(RawEvent::SomethingStored(something, who));
-			Ok(())
-		}
+        let new_kitty = Self::do_create_gen_zero_kitty(&sender, &id);
+
+        <Kitties<T>>::insert(id, new_kitty);
+        Ok(())
+    }
 	}
 }
 
-decl_event!(
-	pub enum Event<T> where AccountId = <T as system::Trait>::AccountId {
-		// Just a dummy event.
-		// Event `Something` is declared with a parameter of the type `u32` and `AccountId`
-		// To emit this event, we call the deposit funtion, from our runtime funtions
-		SomethingStored(u32, AccountId),
-	}
-);
+// Main Kitty implementation
 
-// for Module test
-mod mock;
-mod tests;
+impl<T: Trait> Module<T> {
+  // create gen zero kitty
+  fn do_create_gen_zero_kitty (owner: &T::AccountId, id: &T::Hash) -> Kitty<T::Hash, T::Balance> {
+    let hash_of_zero = <<T as system::Trait>::Hashing as Hash>::hash_of(&0);
+    let zero_price = <T as balances::Trait>::Balance::zero();
+
+    Kitty {
+      id: id.clone(),
+      dna: hash_of_zero,
+      price: zero_price,
+      gen: 0,
+    }
+  }
+}

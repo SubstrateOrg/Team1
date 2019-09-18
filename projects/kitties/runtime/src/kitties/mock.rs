@@ -7,7 +7,7 @@ use sr_primitives::{traits::{BlakeTwo256, IdentityLookup}, testing::Header};
 use sr_primitives::weights::Weight;
 use sr_primitives::Perbill;
 
-use crate::kitties::{Module, Trait};
+use crate::kitties::{Trait};
 
 impl_outer_origin! {
   pub enum Origin for Test {}
@@ -23,6 +23,11 @@ parameter_types! {
   pub const MaximumBlockWeight: Weight = 1024;
   pub const MaximumBlockLength: u32 = 2 * 1024;
   pub const AvailableBlockRatio: Perbill = Perbill::from_percent(75);
+  pub const ExistentialDeposit: u64 = 0;
+  pub const TransferFee: u64 = 0;
+  pub const CreationFee: u64 = 0;
+  pub const TransactionBaseFee: u64 = 0;
+  pub const TransactionByteFee: u64 = 0;
 }
 
 impl system::Trait for Test {
@@ -42,6 +47,21 @@ impl system::Trait for Test {
   type MaximumBlockLength = MaximumBlockLength;
   type AvailableBlockRatio = AvailableBlockRatio;
   type Version = ();
+}
+impl balances::Trait for Test {
+  type Balance = u64;
+  type OnNewAccount = ();
+  type OnFreeBalanceZero = ();
+  type Event = ();
+  type TransactionPayment = ();
+  type TransferPayment = ();
+  type DustRemoval = ();
+  type ExistentialDeposit = ExistentialDeposit;
+  type TransferFee = TransferFee;
+  type CreationFee = CreationFee;
+  type TransactionBaseFee = TransactionBaseFee;
+  type TransactionByteFee = TransactionByteFee;
+  type WeightToFee = ();
 }
 impl Trait for Test {
   type Event = ();
