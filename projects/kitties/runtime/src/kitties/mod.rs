@@ -1,6 +1,5 @@
 /// Cat Module for runtime
 
-use rstd::prelude::*;
 use codec::{Encode, Decode};
 use support::{
   ensure,
@@ -30,7 +29,7 @@ pub trait Trait: system::Trait + balances::Trait {
 #[cfg_attr(feature = "std", derive(Debug))]
 pub struct Kitty<Hash, Balance> {
   id: Hash,
-  dna: Hash,
+  dna: u128,
   gen: u64,
   price: Balance,
 }
@@ -99,19 +98,27 @@ impl<T: Trait> Module<T> {
     (random_seed, sender, nonce).using_encoded(<T as system::Trait>::Hashing::hash)
   }
 
-  fn _gen_dna_by_random_hash (random_hash: &T::Hash) -> T::Hash {
-    // TODO
-    random_hash.clone()
+  fn _gen_dna_by_random_hash<M: AsRef<[u8]>> (random_hash: &M) -> u128 {
+    let rand = random_hash.as_ref();
+    let mut flag = false;
+    let mut ret: u128 = 0;
+    for element in rand.iter() {
+      if !flag {
+        ret += *element as u128;
+      } else {
+        ret <<= 8;
+      }
+      flag = !flag;
+    }
+    ret
   }
 
   // create gen zero kitty
-  fn _create_gen_zero_kitty (id: &T::Hash, dna_data: T::Hash) -> Kitty<T::Hash, T::Balance> {
-    let zero_price = <T as balances::Trait>::Balance::zero();
-
+  fn _create_gen_zero_kitty (id: &T::Hash, dna_data: u128) -> Kitty<T::Hash, T::Balance> {
     Kitty {
       id: id.clone(),
       dna: dna_data,
-      price: zero_price,
+      price: <T as balances::Trait>::Balance::zero(),
       gen: 0,
     }
   }
