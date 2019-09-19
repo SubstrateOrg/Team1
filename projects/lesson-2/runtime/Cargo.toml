@@ -23,6 +23,7 @@ std = [
     'safe-mix/std',
     'offchain-primitives/std',
     'substrate-session/std',
+    'byteorder/std',
 ]
 [build-dependencies.wasm-builder-runner]
 package = 'substrate-wasm-builder-runner'
@@ -38,6 +39,10 @@ default-features = false
 git = 'https://github.com/paritytech/substrate.git'
 package = 'srml-babe'
 rev = 'ac6a2a783f0e1f4a814cf2add40275730cd41be1'
+
+[dependencies.byteorder]
+default_features = false
+version = '1.3.1'
 
 [dependencies.babe-primitives]
 default-features = false
