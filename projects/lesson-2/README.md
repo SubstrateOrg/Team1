@@ -1,70 +1,23 @@
-# Substrate Node Template
+# 作业
 
-A new SRML-based Substrate node, ready for hacking.
+## 题目要求
 
-## Build
+- [x] 链上存储加密猫数据
+- [x] 遍历所有加密猫
+- [x] 每只猫都有⾃自⼰己的dna，为128bit的数据
+- [x] 设计如何⽣生成dna
+- [x] 每个⽤用户可以拥有零到多只猫
+- [x] 每只猫只有⼀一个主⼈人
+- [x] 遍历⽤用户拥有的所有猫
 
-Install Rust:
+---
 
-```bash
-curl https://sh.rustup.rs -sSf | sh
-```
+## 作业答案
 
-Install required tools:
+### 工程目录
 
-```bash
-./scripts/init.sh
-```
+> 建议使用外部目录, 但leason2/runtime也更新为该commit的代码
 
-Build Wasm and native code:
+工程目录为: `projects/kitties`
 
-```bash
-cargo build
-```
-
-## Run
-
-### Single node development chain
-
-You can start a development chain with:
-
-```bash
-cargo run -- --dev
-```
-
-Detailed logs may be shown by running the node with the following environment variables set: `RUST_LOG=debug RUST_BACKTRACE=1 cargo run -- --dev`.
-
-### Multi-node local testnet
-
-If you want to see the multi-node consensus algorithm in action locally, then you can create a local testnet with two validator nodes for Alice and Bob, who are the initial authorities of the genesis chain that have been endowed with testnet units.
-
-Optionally, give each node a name and expose them so they are listed on the Polkadot [telemetry site](https://telemetry.polkadot.io/#/Local%20Testnet).
-
-You'll need two terminal windows open.
-
-We'll start Alice's substrate node first on default TCP port 30333 with her chain database stored locally at `/tmp/alice`. The bootnode ID of her node is `QmRpheLN4JWdAnY7HGJfWFNbfkQCb6tFf4vvA6hgjMZKrR`, which is generated from the `--node-key` value that we specify below:
-
-```bash
-cargo run -- \
-  --base-path /tmp/alice \
-  --chain=local \
-  --alice \
-  --node-key 0000000000000000000000000000000000000000000000000000000000000001 \
-  --telemetry-url ws://telemetry.polkadot.io:1024 \
-  --validator
-```
-
-In the second terminal, we'll start Bob's substrate node on a different TCP port of 30334, and with his chain database stored locally at `/tmp/bob`. We'll specify a value for the `--bootnodes` option that will connect his node to Alice's bootnode ID on TCP port 30333:
-
-```bash
-cargo run -- \
-  --base-path /tmp/bob \
-  --bootnodes /ip4/127.0.0.1/tcp/30333/p2p/QmRpheLN4JWdAnY7HGJfWFNbfkQCb6tFf4vvA6hgjMZKrR \
-  --chain=local \
-  --bob \
-  --port 30334 \
-  --telemetry-url ws://telemetry.polkadot.io:1024 \
-  --validator
-```
-
-Additional CLI usage options are available and may be shown by running `cargo run -- --help`.
+本地作业最终结果commit为: `97ed75871c77ea78c466131d85c0f859737bfe68`
