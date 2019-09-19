@@ -7,7 +7,8 @@ use sr_primitives::{traits::{BlakeTwo256, IdentityLookup}, testing::Header};
 use sr_primitives::weights::Weight;
 use sr_primitives::Perbill;
 
-use crate::kitties::{Trait};
+use super::*;
+use self::{Trait};
 
 impl_outer_origin! {
   pub enum Origin for Test {}

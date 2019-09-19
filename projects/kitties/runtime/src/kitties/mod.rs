@@ -15,8 +15,8 @@ use sr_primitives::{
 use system::{ensure_signed};
 
 // for Module test
-// mod mock;
-// mod tests;
+mod mock;
+mod tests;
 
 /// The module's configuration trait.
 pub trait Trait: system::Trait + balances::Trait {
