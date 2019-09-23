@@ -61,10 +61,7 @@ pub type Hash = primitives::H256;
 /// Digest item type.
 pub type DigestItem = generic::DigestItem<Hash>;
 
-/// Used for the module template in `./template.rs`
-mod template;
-
-/// Used for the module kitties in `./kitties.rs`
+/// Used for Kitties Module
 mod kitties;
 
 /// Opaque types. These are used by the CLI to instantiate machinery that don't need to know
@@ -254,12 +251,9 @@ impl sudo::Trait for Runtime {
 	type Proposal = Call;
 }
 
-/// Used for the module template in `./template.rs`
-impl template::Trait for Runtime {
-	type Event = Event;
-}
-
+/// Used for the module kitty
 impl kitties::Trait for Runtime {
+	type Event = Event;
 }
 
 construct_runtime!(
@@ -275,10 +269,8 @@ construct_runtime!(
 		Indices: indices::{default, Config<T>},
 		Balances: balances::{default, Error},
 		Sudo: sudo,
-		// Used for the module template in `./template.rs`
-		TemplateModule: template::{Module, Call, Storage, Event<T>},
-		// Substrate Kitties module
-		Kitties: kitties::{Module, Storage, Call},
+		// kitties module
+		Kitties: kitties::{Module, Call, Storage, Event<T>},
 	}
 );
 
