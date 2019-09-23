@@ -12,6 +12,7 @@ use sr_primitives::{
     Zero, Hash
   }
 };
+use runtime_io::blake2_128;
 use system::{ensure_signed};
 
 // for Module test
@@ -28,17 +29,21 @@ pub trait Trait: system::Trait + balances::Trait {
 #[derive(Encode, Decode, Default, Clone, PartialEq)]
 #[cfg_attr(feature = "std", derive(Debug))]
 pub struct Kitty<Hash, Balance> {
-  id: Hash,
-  dna: u128,
+	dna: [u8; 16],
   gen: u64,
   price: Balance,
+	// add parent
+  papa: Option<Hash>,
+	mama: Option<Hash>,
 }
+
+type KittyOf<T> = Kitty<<T as system::Trait>::Hash, <T as balances::Trait>::Balance>;
 
 // This module's storage items.
 decl_storage! {
 	trait Store for Module<T: Trait> as KittyStorage {
     // All kitties
-    pub Kitties get(kitties): map T::Hash => Kitty<T::Hash, T::Balance>;
+    pub Kitties get(kitties): map T::Hash => KittyOf<T>;
     pub KittyOwner get(owner_of): map T::Hash => Option<T::AccountId>;
 
     // List of kitties
@@ -76,55 +81,82 @@ decl_module! {
       let sender = ensure_signed(origin)?;
 
       // create new kitty
-      let new_id = Self::_gen_random_hash(&sender);
-      let new_dna = Self::_gen_dna_by_random_hash(&new_id);
-      let new_kitty = Self::_create_gen_zero_kitty(&new_id, new_dna);
+      let (new_id, new_dna) = Self::_gen_random_hash(&sender, None, None);
+      let new_kitty = Self::_create_gen_zero_kitty(new_dna, 0, None, None);
 
       // mint kitty
       Self::_mint_kitty(sender, new_id, new_kitty)?;
 
       Ok(())
     }
+
+		fn breed_kitty(origin, papa: T::Hash, mama: T::Hash) -> Result {
+			let sender = ensure_signed(origin)?;
+
+			// Check both papa and mama "exists"
+			ensure!(<Kitties<T>>::exists(papa), "PaPa id should be exist");
+			ensure!(<Kitties<T>>::exists(mama), "MaMa id should be exist");
+
+			let kitty_1 = Self::kitties(papa);
+			let kitty_2 = Self::kitties(mama);
+
+			let gen = rstd::cmp::max(kitty_1.gen, kitty_2.gen);
+			let new_gen = gen.checked_add(1).ok_or("Overflow adding gen")?;
+	
+			let (new_id, new_dna) = Self::_gen_random_hash(&sender, Some(kitty_1), Some(kitty_2));
+      let new_kitty = Self::_create_gen_zero_kitty(new_dna, new_gen, Some(papa), Some(mama));
+
+      // mint kitty
+      Self::_mint_kitty(sender, new_id, new_kitty)?;
+
+			Ok(())
+		}
 	}
 }
 
 // Main Kitty implementation
 
 impl<T: Trait> Module<T> {
-  fn _gen_random_hash (sender: &T::AccountId) -> T::Hash {
-    let random_seed = <system::Module<T>>::random_seed();
+  fn _gen_random_hash (sender: &T::AccountId, papa: Option<KittyOf<T>>, mama: Option<KittyOf<T>>)
+		-> (T::Hash, [u8; 16])
+	{
+		// dna source
     let nonce = <Self as Store>::Nonce::get();
-
-    (random_seed, sender, nonce).using_encoded(<T as system::Trait>::Hashing::hash)
-  }
-
-  fn _gen_dna_by_random_hash<M: AsRef<[u8]>> (random_hash: &M) -> u128 {
-    let rand = random_hash.as_ref();
-    let mut flag = false;
-    let mut ret: u128 = 0;
-    for element in rand.iter() {
-      if !flag {
-        ret += *element as u128;
-      } else {
-        ret <<= 8;
-      }
-      flag = !flag;
-    }
-    ret
+    let rand = <system::Module<T>>::random_seed();
+		let idx = <system::Module<T>>::extrinsic_index();
+		let bn = <system::Module<T>>::block_number();
+		// gen id
+    let id = (rand, nonce, bn).using_encoded(<T as system::Trait>::Hashing::hash);
+		// gen dna
+		let mut dna: [u8; 16];
+		if let Some(kitty) = papa {
+			dna = kitty.dna.clone();
+			let kitty2 = mama.unwrap();
+			for (i, (dna_2_element, r)) in kitty2.dna.as_ref().iter().zip(id.as_ref().iter()).enumerate() {
+				if r % 2 == 0 {
+					dna.as_mut()[i] = *dna_2_element;
+				}
+			}
+		} else {
+			dna = (rand, sender, idx, bn).using_encoded(blake2_128);
+		}
+		(id, dna)
   }
 
   // create gen zero kitty
-  fn _create_gen_zero_kitty (id: &T::Hash, dna_data: u128) -> Kitty<T::Hash, T::Balance> {
+  fn _create_gen_zero_kitty (dna_data: [u8; 16], gen: u64, papa: Option<T::Hash>, mama: Option<T::Hash>) -> KittyOf<T>
+	{
     Kitty {
-      id: id.clone(),
       dna: dna_data,
       price: <T as balances::Trait>::Balance::zero(),
-      gen: 0,
+      gen,
+			papa,
+			mama,
     }
   }
 
   // mint a new Kitty
-  fn _mint_kitty (kitty_owner: T::AccountId, kitty_id: T::Hash, new_kitty: Kitty<T::Hash, T::Balance>) -> Result {
+  fn _mint_kitty (kitty_owner: T::AccountId, kitty_id: T::Hash, new_kitty: KittyOf<T>) -> Result {
     ensure!(!<Kitties<T>>::exists(kitty_id), "This kitty id already exists");
     // calc index
     let curr_count_index = Self::kitties_amount();
