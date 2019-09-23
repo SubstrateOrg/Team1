@@ -31,7 +31,42 @@ decl_module! {
 			let dna = payload.using_encoded(blake2_128);
 			let kitty = Kitty(dna);
 			Kitties::insert(count, kitty);
-			KittiesCount::put(count + 1);
+// 			KittiesCount::put(count + 1);
+			let new_kitties_count = Self::kitties_count().checked_add(1)
+                	.ok_or("Kitties count overflow")?;
+            		KittiesCount::put(new_kitties_count);
+		}
+		/// Breed kitties
+		pub fn breed(origin, kitty_id_one: u32, kitty_id_two: u32) {
+			let sender = ensure_signed(origin)?;
+
+            		let kitty1 = Self::kitty(kitty_id_one);
+		    	let kitty2 = Self::kitty(kitty_id_two);
+//		    	ensure!(kitty1.is_some(), "非法的id");
+//		    	ensure!(kitty2.is_some(), "非法的id");
+		    	ensure!(kitty_id_one != kitty_id_two, "需要一个父代和一个母代");
+		    	let kitty_id = Self::kitties_count();
+		    	let kitty1_dna = kitty1.0;
+		    	let kitty2_dna = kitty2.0;
+		    	//
+		    	let random = (<system::Module<T>>::random_seed(), &sender,
+            		<system::Module<T>>::extrinsic_index());
+			let hashed = random.using_encoded(blake2_128);
+			let mut new_dna = [0u8; 16];
+		   	for i in 0..kitty1_dna.len() {
+				if i%3 == 0 {
+			    		new_dna[i] = kitty1_dna[i];
+				} else if  i%3 == 1{
+			    		new_dna[i] = kitty2_dna[i];
+				} else {
+			    		new_dna[i] = hashed[i];
+				}
+		    	}
+		    	Kitties::insert(kitty_id, Kitty(new_dna));
+//			KittiesCount::put(count + 1);
+            		let new_kitties_count = Self::kitties_count().checked_add(1)
+                	.ok_or("Kitties count overflow")?;
+            		KittiesCount::put(new_kitties_count);
 		}
 	}
 }
