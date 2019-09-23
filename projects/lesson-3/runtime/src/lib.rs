@@ -61,7 +61,10 @@ pub type Hash = primitives::H256;
 /// Digest item type.
 pub type DigestItem = generic::DigestItem<Hash>;
 
-/// Used for Kitties Module
+/// Used for the module template in `./template.rs`
+mod template;
+
+/// Used for the module kitties in `./kitties.rs`
 mod kitties;
 
 /// Opaque types. These are used by the CLI to instantiate machinery that don't need to know
@@ -94,8 +97,8 @@ pub mod opaque {
 
 /// This runtime version.
 pub const VERSION: RuntimeVersion = RuntimeVersion {
-	spec_name: create_runtime_str!("kitties"),
-	impl_name: create_runtime_str!("kitties"),
+	spec_name: create_runtime_str!("substrate-kitties"),
+	impl_name: create_runtime_str!("substrate-kitties"),
 	authoring_version: 3,
 	spec_version: 4,
 	impl_version: 4,
@@ -208,7 +211,7 @@ impl indices::Trait for Runtime {
 }
 
 parameter_types! {
-	pub const MinimumPeriod: u64 = SLOT_DURATION / 2;
+	pub const MinimumPeriod: u64 = 1000;
 }
 
 impl timestamp::Trait for Runtime {
@@ -251,9 +254,12 @@ impl sudo::Trait for Runtime {
 	type Proposal = Call;
 }
 
-/// Used for the module kitty
-impl kitties::Trait for Runtime {
+/// Used for the module template in `./template.rs`
+impl template::Trait for Runtime {
 	type Event = Event;
+}
+
+impl kitties::Trait for Runtime {
 }
 
 construct_runtime!(
@@ -269,8 +275,10 @@ construct_runtime!(
 		Indices: indices::{default, Config<T>},
 		Balances: balances::{default, Error},
 		Sudo: sudo,
-		// kitties module
-		Kitties: kitties::{Module, Call, Storage, Event<T>},
+		// Used for the module template in `./template.rs`
+		TemplateModule: template::{Module, Call, Storage, Event<T>},
+		// Substrate Kitties module
+		Kitties: kitties::{Module, Storage, Call},
 	}
 );
 
