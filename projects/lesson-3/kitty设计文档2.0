@@ -1,0 +1,33 @@
+模块设计：
+模块分为三部分也就是需要实现四个个宏  decl_storage （定义加密猫的存储）decl_module （定义加密猫向外提供的方法比如创建一个加密猫）decl_event （定义事件，如创建了一个加密猫，需要发送一个事件） decl_error（定义失败信息，如创建加密猫失败后需要返回的错误信息）  其中 前二个宏必须实现，后二个可以选择不实现。
+
+数据结构：
+struct Kitty
+name:string
+kittyid:[u8:16]
+type count
+存储定义：
+Kitties：map kittyid => Kitty
+OwnedKitties：map accountid => kittyid
+kittOwners: map kittyid=>accountid
+kittyprice:map kittyid=>priceOf
+kittiesCount:()=>u256
+
+可调用函数：
+Create ()=>kittyId
+Transfer(from,to,kittyId)=>bool
+Sell(from,kittyId,price)=>bool
+Buy(from,kittyId,price)=>bool
+遍历所有的猫：
+可以用一个链表对新创建的kitty进行存储
+
+v2.0
+Breed(from,kittyId1,kittyId2)=>kittyId
+Dna伪代码
+Dna可以根据父亲kittyId和母亲kittyId以及当前时间（或者一个随机数） 三者做hash生成。
+
+
+
+
+
+
