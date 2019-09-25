@@ -31,27 +31,7 @@ decl_module! {
 		/// Create a new kitty
 		pub fn create(origin) {
 			let sender = ensure_signed(origin)?;
-
-			// 作业：重构create方法，避免重复代码
-
-			let kitty_id = Self::kitties_count();
-			if kitty_id == T::KittyIndex::max_value() {
-				return Err("Kitties count overflow");
-			}
-
-			// Generate a random 128bit value
-			let payload = (<system::Module<T>>::random_seed(), &sender, <system::Module<T>>::extrinsic_index(), <system::Module<T>>::block_number());
-			let dna = payload.using_encoded(blake2_128);
-
-			// Create and store kitty
-			let kitty = Kitty(dna);
-			<Kitties<T>>::insert(kitty_id, kitty);
-			<KittiesCount<T>>::put(kitty_id + 1.into());
-
-			// Store the ownership information
-			let user_kitties_id = Self::owned_kitties_count(&sender);
-			<OwnedKitties<T>>::insert((sender.clone(), user_kitties_id), kitty_id);
-			<OwnedKittiesCount<T>>::insert(sender, user_kitties_id + 1.into());
+			Self::do_create(sender)?;
 		}
 
 		/// Breed kitties
@@ -59,6 +39,11 @@ decl_module! {
 			let sender = ensure_signed(origin)?;
 
 			Self::do_breed(sender, kitty_id_1, kitty_id_2)?;
+		}
+		pub fn transfer(origin,to: T::AccountId,sender_kitty_id: T::KittyIndex){
+			let sender = ensure_signed(origin)?;
+
+			Self::do_transfer(sender, to, sender_kitty_id)?;
 		}
 	}
 }
@@ -69,10 +54,46 @@ fn combine_dna(dna1: u8, dna2: u8, selector: u8) -> u8 {
 	// selector.map_bits(|bit, index| if (bit == 1) { dna1 & (1 << index) } else { dna2 & (1 << index) })
 	// 注意 map_bits这个方法不存在。只要能达到同样效果，不局限算法
 	// 测试数据：dna1 = 0b11110000, dna2 = 0b11001100, selector = 0b10101010, 返回值 0b11100100
-	return dna1;
+	let selector_2 = u8::max_value() -selector;
+	let x = dna1 & selector;
+	let y = dna2 & selector_2;
+	return x|y;
 }
 
 impl<T: Trait> Module<T> {
+	fn do_transfer(sender: T::AccountId,to: T::AccountId,sender_kitty_id: T::KittyIndex) -> Result {
+		// 是否有这只猫ID
+		let kitty_id = Self::owned_kitties((sender.clone(),sender_kitty_id));
+		// 当前拥有猫
+		let sender_counts = Self::owned_kitties_count(sender.clone());
+		// 是否有这只猫
+		let kitty = Self::kitty(kitty_id);
+		ensure!(kitty.is_some(), "Invalid kitty_id_1");
+		// 删除猫
+		<OwnedKitties<T>>::remove((sender.clone(), sender_kitty_id));
+		let last_user_kitty_id = sender_counts - 1.into();
+		// 最后不是最后一只猫，要转移到sender_kitty_id
+		if last_user_kitty_id != sender_kitty_id {
+			let last_kitty_id =  Self::owned_kitties((sender.clone(),last_user_kitty_id));
+			<OwnedKitties<T>>::remove((sender.clone(), last_user_kitty_id));
+			<OwnedKitties<T>>::insert((sender.clone(), sender_kitty_id),last_kitty_id);
+		}
+		<OwnedKittiesCount<T>>::insert(sender, last_user_kitty_id);
+		let user_kitties_id = Self::owned_kitties_count(to.clone());
+		<OwnedKitties<T>>::insert((to.clone(), user_kitties_id), kitty_id);
+		<OwnedKittiesCount<T>>::insert(to, user_kitties_id + 1.into());
+		Ok(())
+	}
+	fn do_create(sender: T::AccountId) -> Result{
+			// 作业：重构create方法，避免重复代码
+			let kitty_id = Self::next_kitty_id()?;
+			// Generate a random 128bit value
+			let dna = Self::random_value(&sender);
+
+			// Create and store kitty
+			Self::insert_kitty(sender, kitty_id, Kitty(dna));
+			Ok(())
+	}
 	fn random_value(sender: &T::AccountId) -> [u8; 16] {
 		let payload = (<system::Module<T>>::random_seed(), sender, <system::Module<T>>::extrinsic_index(), <system::Module<T>>::block_number());
 		payload.using_encoded(blake2_128)
