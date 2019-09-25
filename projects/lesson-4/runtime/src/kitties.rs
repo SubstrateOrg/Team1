@@ -38,8 +38,6 @@ decl_module! {
 
 			let kitty_id = Self::next_kitty_id().unwrap();
 
-			// Generate a random 128bit value
-			let payload = (<system::Module<T>>::random_seed(), &sender, <system::Module<T>>::extrinsic_index(), <system::Module<T>>::block_number());
 			let dna = Self::random_value(&sender);
 
 			// Create and store kitty
