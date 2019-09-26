@@ -52,6 +52,13 @@ decl_module! {
 
 			Self::do_breed(sender, kitty_id_1, kitty_id_2)?;
 		}
+
+		/// transfer kitty from one to another
+		pub fn transfer(origin,to: T::AccountId,sender_kitty_id: T::KittyIndex){
+			let sender = ensure_signed(origin)?;
+
+			Self::do_transfer(sender, to, sender_kitty_id)?;
+		}
 	}
 }
 
@@ -94,6 +101,26 @@ impl<T: Trait> Module<T> {
 		<OwnedKitties<T>>::insert((owner.clone(), user_kitties_id), kitty_id.clone());
 		<OwnedKittiesCount<T>>::insert(owner, user_kitties_id + 1.into());
 	}
+
+    // reference from: https://github.com/woyoutlz/Team1/blob/master/projects/lesson-4/runtime/src/kitties.rs
+    fn do_transfer(sender: T::AccountId,to: T::AccountId,sender_kitty_id: T::KittyIndex) -> Result {
+        let kitty_id = Self::owned_kitties((sender.clone(),sender_kitty_id));
+        let sender_counts = Self::owned_kitties_count(sender.clone());
+        let kitty = Self::kitty(kitty_id);
+        ensure!(kitty.is_some(), "Invalid kitty_id_1");
+        <OwnedKitties<T>>::remove((sender.clone(), sender_kitty_id));
+        let last_user_kitty_id = sender_counts - 1.into();
+        if last_user_kitty_id != sender_kitty_id {
+            let last_kitty_id =  Self::owned_kitties((sender.clone(),last_user_kitty_id));
+            <OwnedKitties<T>>::remove((sender.clone(), last_user_kitty_id));
+            <OwnedKitties<T>>::insert((sender.clone(), sender_kitty_id),last_kitty_id);
+        }
+        <OwnedKittiesCount<T>>::insert(sender, last_user_kitty_id);
+        let user_kitties_id = Self::owned_kitties_count(to.clone());
+        <OwnedKitties<T>>::insert((to.clone(), user_kitties_id), kitty_id);
+        <OwnedKittiesCount<T>>::insert(to, user_kitties_id + 1.into());
+        Ok(())
+    }
 
 	fn do_breed(sender: T::AccountId, kitty_id_1: T::KittyIndex, kitty_id_2: T::KittyIndex) -> Result {
 		let kitty1 = Self::kitty(kitty_id_1);
