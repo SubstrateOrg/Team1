@@ -67,7 +67,7 @@ fn combine_dna(dna1: u8, dna2: u8, selector: u8) -> u8 {
 //	}else {
 //		ret |= dna2 & 0x01;
 //	}
-	return dna1;
+    ((selector & dna1) | (!selector & dna2))
 }
 
 impl<T: Trait> Module<T> {
