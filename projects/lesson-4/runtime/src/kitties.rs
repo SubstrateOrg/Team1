@@ -18,11 +18,14 @@ decl_storage! {
 		pub Kitties get(kitty): map T::KittyIndex => Option<Kitty>;
 		/// Stores the total number of kitties. i.e. the next kitty index
 		pub KittiesCount get(kitties_count): T::KittyIndex;
+		/// Get user kitty index by kitty id, cause a kitty only have one owner, so can be done like this.
+		pub OwnedKittiesIndex get(owned_kitties_index): map T::KittyIndex  => T::KittyIndex;
 
 		/// Get kitty ID by account ID and user kitty index
 		pub OwnedKitties get(owned_kitties): map (T::AccountId, T::KittyIndex) => T::KittyIndex;
 		/// Get number of kitties by account ID
 		pub OwnedKittiesCount get(owned_kitties_count): map T::AccountId => T::KittyIndex;
+		
 	}
 }
 
@@ -43,6 +46,18 @@ decl_module! {
 
 			Self::do_breed(sender, kitty_id_1, kitty_id_2)?;
 		}
+
+		/// Transfer kitties
+		fn transfer(origin, to: T::AccountId, kitty_id: T::KittyIndex) -> Result {
+            let sender = ensure_signed(origin)?;
+
+            // let owner = Self::owner_of(kitty_id).ok_or("No owner for this kitty")?;
+            // ensure!(owner == sender, "You do not own this kitty");
+
+            Self::transfer_from(sender, to, kitty_id)?;
+
+            Ok(())
+        }
 	}
 }
 
@@ -54,13 +69,13 @@ fn combine_dna(dna1: u8, dna2: u8, selector: u8) -> u8 {
 	// 测试数据：dna1 = 0b11110000, dna2 = 0b11001100, selector = 0b10101010, 返回值 0b11100100
 	let mut res = 0b00000000;
 	for idx in [1, 2, 4, 8, 16, 32, 64, 128].iter() {
-		if selector&idx != 0 {
+		if selector&idx != 0 {  // using dna1
 			res = res|(dna1&idx);
-		} else {
+		} else {  // using dna2
 			res = res|(dna2&idx);
 		}
 	}
-	return res;
+	res
 }
 
 impl<T: Trait> Module<T> {
@@ -86,6 +101,9 @@ impl<T: Trait> Module<T> {
 		let user_kitties_id = Self::owned_kitties_count(owner.clone());
 		<OwnedKitties<T>>::insert((owner.clone(), user_kitties_id), kitty_id);
 		<OwnedKittiesCount<T>>::insert(owner, user_kitties_id + 1.into());
+
+		// update user kitty index
+		<OwnedKittiesIndex<T>>::insert(kitty_id, user_kitties_id);
 	}
 
 	fn do_breed(sender: T::AccountId, kitty_id_1: T::KittyIndex, kitty_id_2: T::KittyIndex) -> Result {
@@ -114,4 +132,46 @@ impl<T: Trait> Module<T> {
 
 		Ok(())
 	}
+
+	fn transfer_from(from: T::AccountId, to: T::AccountId, kitty_id: T::KittyIndex) -> Result {
+        // let owner = Self::owner_of(kitty_id).ok_or("No owner for this kitty")?;
+		let kitty = Self::kitty(kitty_id);
+
+		ensure!(kitty.is_some(), "Invalid kitty_id");
+
+        // ensure!(owner == from, "'from' account does not own this kitty");
+
+        let owned_kitty_count_from = Self::owned_kitties_count(from.clone());
+        let owned_kitty_count_to = Self::owned_kitties_count(to.clone());
+
+        let new_owned_kitty_count_to = owned_kitty_count_to + 1.into();
+
+        let new_owned_kitty_count_from = owned_kitty_count_from - 1.into();
+
+        // let kitty_index = <OwnedKittiesIndex<T>>::get(kitty_id);
+		let kitty_index = Self::owned_kitties_index(kitty_id);
+        if kitty_index != new_owned_kitty_count_from {
+			// there two way to get from storage map:
+            // let last_kitty_id: T::KittyIndex = <OwnedKitties<T>>::get((from.clone(), new_owned_kitty_count_from));
+			let last_kitty_id: T::KittyIndex = Self::owned_kitties((from.clone(), new_owned_kitty_count_from));
+            <OwnedKitties<T>>::insert((from.clone(), kitty_index), last_kitty_id);
+            <OwnedKitties<T>>::insert((from.clone(), new_owned_kitty_count_from), kitty_index);
+        }
+
+		// add kitty to newer owner
+		let kitty_index_to = owned_kitty_count_to;
+		<OwnedKitties<T>>::insert((to.clone(), kitty_index_to), kitty_id);
+		<OwnedKittiesCount<T>>::insert(to.clone(), new_owned_kitty_count_to);
+		
+		// remove kitty from old owner
+		<OwnedKitties<T>>::remove((from.clone(), new_owned_kitty_count_from));
+		<OwnedKittiesCount<T>>::insert(from.clone(), new_owned_kitty_count_from);
+
+		// update user kitty index
+		<OwnedKittiesIndex<T>>::insert(kitty_id, kitty_index_to);
+
+        // Self::deposit_event(RawEvent::Transferred(from, to, kitty_id));
+
+        Ok(())
+    }
 }
