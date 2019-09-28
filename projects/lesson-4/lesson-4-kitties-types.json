@@ -1,0 +1,22 @@
+{
+  "KittyId": "u64",
+  "KittySexual": {
+    "_enum": {
+      "Male": null,
+      "Female": null
+    }
+  },
+  "Kitty": {
+    "id": "KittyId",
+    "parents": "Option<(KittyId, KittyId)>",
+    "sexual": "KittySexual",
+    "dna": "u128",
+    "owner": "AccountId"
+  },
+  "KittyLinkedItem": {
+    "owner": "AccountId",
+    "id": "Option<KittyId>",
+    "prev": "Option<KittyId>",
+    "next": "Option<KittyId>"
+  }
+}
