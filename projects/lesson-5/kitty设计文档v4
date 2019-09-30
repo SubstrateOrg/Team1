@@ -1,0 +1,10 @@
+交易所
+故包含买和卖
+需要在decl_module里面实现buy（购买） 和sell（出售）
+fn buy(origin, kitty_id: T::KittyIndex, price: BalanceOf<T>)
+pub fn sell(origin, kitty_id: T::KittyIndex, price: Option<BalanceOf<T>>)
+
+
+
+
+
