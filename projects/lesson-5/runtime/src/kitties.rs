@@ -1,11 +1,11 @@
-use support::{decl_module, decl_storage, ensure, StorageValue, StorageMap, dispatch::Result, Parameter};
+use support::{decl_module, decl_storage, ensure, StorageValue, StorageMap, dispatch::Result, Parameter, traits::Currency};
 use sr_primitives::traits::{SimpleArithmetic, Bounded, Member};
 use codec::{Encode, Decode};
 use runtime_io::blake2_128;
 use system::ensure_signed;
 use rstd::result;
 
-pub trait Trait: system::Trait {
+pub trait Trait: balances::Trait {
 	type KittyIndex: Parameter + Member + SimpleArithmetic + Bounded + Default + Copy;
 }
 
@@ -27,6 +27,9 @@ decl_storage! {
 		pub KittiesCount get(kitties_count): T::KittyIndex;
 
 		pub OwnedKitties get(owned_kitties): map (T::AccountId, Option<T::KittyIndex>) => Option<KittyLinkedItem<T>>;
+	
+		pub KittyOwners get(kitty_owner): map T::KittyIndex => Option<T::AccountId>;
+		pub KittyPrices get(kitty_price): map T::KittyIndex => Option<T::Balance>;
 	}
 }
 
@@ -55,15 +58,52 @@ decl_module! {
 		// 作业：实现 transfer(origin, to: T::AccountId, kitty_id: T::KittyIndex)
 		// 使用 ensure! 来保证只有主人才有权限调用 transfer
 		// 使用 OwnedKitties::append 和 OwnedKitties::remove 来修改小猫的主人
-		pub fn transfer(origin, to: T::AccountId, kitty_id: T::KittyIndex) {
+		pub fn transfer(origin, to: T::AccountId, kitty_id: T::KittyIndex) -> Result {
 			let sender = ensure_signed(origin)?;
 			// let have = Self::owned_kitties((sender, Some(kitty_id)));
-			ensure!( Self::owned_kitties((sender.clone(), Some(kitty_id))) != None, "U do NOT own this kitty!");
+			ensure!( Self::owned_kitties((sender.clone(), Some(kitty_id))) != None, 
+				"U do NOT own this kitty!");
 			
 			<OwnedKitties<T>>::remove(&sender, kitty_id);
 			
 			<OwnedKitties<T>>::append(&to, kitty_id);
 
+			<KittyOwners<T>>::insert(kitty_id, to);
+
+			Ok(())
+		}
+
+		pub fn ask(origin, kitty_id: T::KittyIndex, price: Option<T::Balance>) {
+			let sender = ensure_signed(origin)?;
+			ensure!(Self::kitty_owner(&kitty_id).map(|owner| owner == sender).unwrap_or(false), "Only owner can set price for kitty!");
+
+			if let Some(price) = price {
+				<KittyPrices<T>>::insert(kitty_id, price);
+			} else {
+				<KittyPrices<T>>::remove(kitty_id);
+			}
+		}
+
+		pub fn buy(origin, kitty_id: T::KittyIndex, price: T::Balance) {
+			let sender = ensure_signed(origin)?;
+
+			let owner = Self::kitty_owner(kitty_id);
+			ensure!(owner.is_some(), "Kitty has no onwer!");
+			let owner = owner.unwrap();
+
+			let kitty_price = Self::kitty_price(kitty_id);
+			ensure!(kitty_price.is_some(), "Kitty not for sale!");
+			let kitty_price = kitty_price.unwrap();
+
+			ensure!(price >= kitty_price, "Price is too low!");
+
+			<balances::Module<T> as Currency<T::AccountId>>::transfer(&sender, &owner, kitty_price)?;
+
+			<KittyPrices<T>>::remove(kitty_id);
+
+			<OwnedKitties<T>>::remove(&owner, kitty_id);
+			<OwnedKitties<T>>::append(&sender, kitty_id);
+			<KittyOwners<T>>::insert(kitty_id, sender);
 		}
 	}
 }
@@ -164,6 +204,7 @@ impl<T: Trait> Module<T> {
 		// Create and store kitty
 		<Kitties<T>>::insert(kitty_id, kitty);
 		<KittiesCount<T>>::put(kitty_id + 1.into());
+		<KittyOwners<T>>::insert(kitty_id, owner.clone());
 
 		Self::insert_owned_kitty(owner, kitty_id);
 	}
@@ -175,6 +216,8 @@ impl<T: Trait> Module<T> {
 		ensure!(kitty1.is_some(), "Invalid kitty_id_1");
 		ensure!(kitty2.is_some(), "Invalid kitty_id_2");
 		ensure!(kitty_id_1 != kitty_id_2, "Needs different parent");
+		ensure!(Self::kitty_owner(&kitty_id_1).map(|owner| owner == sender.clone()).unwrap_or(false), "Not onwer of kitty1");
+		ensure!(Self::kitty_owner(&kitty_id_2).map(|owner| owner == sender.clone()).unwrap_or(false), "Not onwer of kitty2");
 
 		let kitty_id = Self::next_kitty_id()?;
 
