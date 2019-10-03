@@ -2,6 +2,7 @@ use support::{decl_module, decl_storage, ensure, StorageValue, StorageMap, dispa
 use sr_primitives::traits::{SimpleArithmetic, Bounded, Member};
 use codec::{Encode, Decode};
 use runtime_io::blake2_128;
+use core::prelude::v1::Some;
 use system::ensure_signed;
 use rstd::result;
 
@@ -28,6 +29,7 @@ decl_storage! {
 
 		pub OwnedKitties get(owned_kitties): map (T::AccountId, Option<T::KittyIndex>) => Option<KittyLinkedItem<T>>;
 		pub OwnerKittyPrice get(owner_kitty_price) : map (T::AccountId, Option<T::KittyIndex>) => T::Balance;
+
 	}
 }
 
@@ -52,22 +54,24 @@ decl_module! {
 
 			Self::do_breed(&sender, kitty_id_1, kitty_id_2)?;
 		}
-		pub transfer(origin, to: T::AccountId, kitty_id: T::KittyIndex){
+
+		// 作业：实现 transfer(origin, to: T::AccountId, kitty_id: T::KittyIndex)
+		// 使用 ensure! 来保证只有主人才有权限调用 transfer
+		// 使用 OwnedKitties::append 和 OwnedKitties::remove 来修改小猫的主人
+		pub  fn transfer(origin, to: T::AccountId, kitty_id: T::KittyIndex){
 			let sender = ensure_signed(origin)?;
 
 			Self::do_transfer(sender, to, kitty_id)?;
 		}
-		// 作业：实现 transfer(origin, to: T::AccountId, kitty_id: T::KittyIndex)
-		// 使用 ensure! 来保证只有主人才有权限调用 transfer
-		// 使用 OwnedKitties::append 和 OwnedKitties::remove 来修改小猫的主人
-		pub sell(origin,kitty_id: T::KittyIndex,price: T::Balance) {
+		pub fn sell(origin,kitty_id: T::KittyIndex,price: T::Balance) {
 			let sender = ensure_signed(origin)?;
 			Self::do_sell(sender, kitty_id,price)?;
 		}
-		pub buy(origin,seller: T::AccountId, kitty_id: T::KittyIndex) {
+		pub fn buy(origin,seller: T::AccountId, kitty_id: T::KittyIndex) {
 			let sender = ensure_signed(origin)?;
 			Self::do_buy(sender, seller ,kitty_id)?;
 		}
+
 	}
 }
 
@@ -155,8 +159,8 @@ impl<T: Trait> Module<T> {
 
 	fn insert_owned_kitty(owner: &T::AccountId, kitty_id: T::KittyIndex) {
 		// 作业：调用 OwnedKitties::append 完成实现
-		 <OwnedKitties<T>>::append(&owner,kitty_id);
-  }
+				 <OwnedKitties<T>>::append(&owner,kitty_id);
+  	}
 
 	fn insert_kitty(owner: &T::AccountId, kitty_id: T::KittyIndex, kitty: Kitty) {
 		// Create and store kitty
@@ -168,12 +172,14 @@ impl<T: Trait> Module<T> {
 	fn do_transfer(sender: T::AccountId,to: T::AccountId,kitty_id: T::KittyIndex) -> Result {
 		let kitty = Self::kitty(kitty_id);
 		ensure!(kitty.is_some(), "Invalid kitty_id");
-		let kittyitem = Self::owned_kitties((sender.clone(),kitty_id));
-		ensure!(kittyitem.is_some(),"user have no auth for kitty");
+		let kittyitem = <OwnedKitties<T>>::read(&(sender.clone()),Some(kitty_id));
+		// let kittyitem = Self::owned_kitties((sender.clone(),kitty_id));
+		// ensure!(kittyitem.is_some(),"user have no auth for kitty");
 		<OwnedKitties<T>>::remove(&sender,kitty_id);
 		<OwnedKitties<T>>::append(&to,kitty_id);
 		Ok(())
 	}
+
 	fn do_breed(sender: &T::AccountId, kitty_id_1: T::KittyIndex, kitty_id_2: T::KittyIndex) -> Result {
 		let kitty1 = Self::kitty(kitty_id_1);
 		let kitty2 = Self::kitty(kitty_id_2);
@@ -200,28 +206,30 @@ impl<T: Trait> Module<T> {
 
 		Ok(())
 	}
-	fn do_sell(sender:T::AccountId, kitty_id: T::KittyIndex , price: T::Balance) {
-		let kitty = Self::kitty(kitty_id);
-		ensure!(kitty.is_some(), "Invalid kitty_id");
-		let kittyitem = Self::owned_kitties((sender.clone(),kitty_id));
-		ensure!(kittyitem.is_some(),"user have no auth for kitty");
-		<OwnerKittyPrice<T>>::insert((sender,kitty_id),price);
+	fn do_sell(sender:T::AccountId, kitty_id: T::KittyIndex , price: T::Balance) -> Result{
+		let kittyx = Self::kitty(kitty_id);
+		ensure!(kittyx.is_some(), "Invalid kitty_id");
+		let kittyitem = <OwnedKitties<T>>::read(&(sender.clone()),Some(kitty_id));
+		// ensure!(kittyitem.is_some(),"user have no auth for kitty");
+		<OwnerKittyPrice<T>>::insert(&(sender.clone(),Some(kitty_id)),price);
+		Ok(())
 	}
-	fn do_buy(sender:T::AccountId,seller:T::AccountId, kitty_id: T::KittyIndex) {
+	fn do_buy(sender:T::AccountId,seller:T::AccountId, kitty_id: T::KittyIndex) -> Result{
 		let kitty = Self::kitty(kitty_id);
 		ensure!(kitty.is_some(), "Invalid kitty_id");
-		let kittyitem = Self::owned_kitties((seller.clone(),kitty_id));
-		ensure!(kittyitem.is_some(),"user have no auth for kitty");
-		let price = Self::owner_kitty_price((seller.clone(),kitty_id));
-		ensure!(price.is_some(),"price is invalid");
+		let kittyitem = <OwnedKitties<T>>::read(&(sender.clone()),Some(kitty_id));
+		// ensure!(kittyitem.is_some(),"user have no auth for kitty");
+		let price = Self::owner_kitty_price(&(seller.clone(),Some(kitty_id)));
+		// ensure!(price.is_some(),"price is invalid");
 		/* if sender.balance > price :
 			sender.balance - = price
 			seller.balance += price
 		*/
-		<OwnerKittyPrice<T>>::remove((seller,kitty_id));
+		<OwnerKittyPrice<T>>::remove(&(seller.clone(),Some(kitty_id)));
 		Self::do_transfer(seller,sender,kitty_id);
 		Ok(())
 	}
+
 }
 
 /// tests for this module
