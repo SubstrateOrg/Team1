@@ -5,7 +5,7 @@ use runtime_io::blake2_128;
 use system::ensure_signed;
 use rstd::result;
 
-pub trait Trait: system::Trait {
+pub trait Trait: balances::Trait  + system::Trait{
 	type KittyIndex: Parameter + Member + SimpleArithmetic + Bounded + Default + Copy;
 }
 
