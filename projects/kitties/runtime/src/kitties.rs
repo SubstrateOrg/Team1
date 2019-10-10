@@ -1,53 +1,65 @@
 use support::{
-	decl_module, decl_storage, ensure,
-	StorageValue, StorageMap, Parameter,
-	traits:: {
-		Currency, WithdrawReason
-	},
-	dispatch::Result
+	decl_module, decl_storage, decl_event, ensure, StorageValue, StorageMap,
+	Parameter, traits::Currency
 };
-use sr_primitives::traits::{
-	CheckedAdd, CheckedSub, Bounded, SimpleArithmetic, Member
-};
+use sr_primitives::traits::{SimpleArithmetic, Bounded, Member};
 use codec::{Encode, Decode};
 use runtime_io::blake2_128;
 use system::ensure_signed;
 use rstd::result;
+use crate::linked_item::{LinkedList, LinkedItem};
 
 pub trait Trait: system::Trait {
+	type Event: From<Event<Self>> + Into<<Self as system::Trait>::Event>;
 	type KittyIndex: Parameter + Member + SimpleArithmetic + Bounded + Default + Copy;
 	type Currency: Currency<Self::AccountId>;
 }
 
-pub type BalanceOf<T> = <<T as Trait>::Currency as Currency<<T as system::Trait>::AccountId>>::Balance;
+type BalanceOf<T> = <<T as Trait>::Currency as Currency<<T as system::Trait>::AccountId>>::Balance;
 
-#[cfg_attr(feature = "std", derive(Debug, PartialEq, Eq))]
 #[derive(Encode, Decode)]
-pub struct Kitty<T: Trait> {
-	pub dna: [u8; 16],
-	pub price: BalanceOf<T>,
-}
+pub struct Kitty(pub [u8; 16]);
 
-#[cfg_attr(feature = "std", derive(Debug, PartialEq, Eq))]
-#[derive(Encode, Decode)]
-pub struct KittyLinkedItem<T: Trait> {
-	pub prev: Option<T::KittyIndex>,
-	pub next: Option<T::KittyIndex>,
-}
+type KittyLinkedItem<T> = LinkedItem<<T as Trait>::KittyIndex>;
+type OwnedKittiesList<T> = LinkedList<OwnedKitties<T>, <T as system::Trait>::AccountId, <T as Trait>::KittyIndex>;
 
 decl_storage! {
 	trait Store for Module<T: Trait> as Kitties {
 		/// Stores all the kitties, key is the kitty id / index
-		pub Kitties get(kitty): map T::KittyIndex => Option<Kitty<T>>;
+		pub Kitties get(kitty): map T::KittyIndex => Option<Kitty>;
 		/// Stores the total number of kitties. i.e. the next kitty index
 		pub KittiesCount get(kitties_count): T::KittyIndex;
-		/// Stores the owned kitties and linked item
+
 		pub OwnedKitties get(owned_kitties): map (T::AccountId, Option<T::KittyIndex>) => Option<KittyLinkedItem<T>>;
+
+		/// Get kitty owner
+		pub KittyOwners get(kitty_owner): map T::KittyIndex => Option<T::AccountId>;
+		/// Get kitty price. None means not for sale.
+		pub KittyPrices get(kitty_price): map T::KittyIndex => Option<BalanceOf<T>>
 	}
 }
 
+decl_event!(
+	pub enum Event<T> where
+		<T as system::Trait>::AccountId,
+		<T as Trait>::KittyIndex,
+		Balance = BalanceOf<T>,
+	{
+		/// A kitty is created. (owner, kitty_id)
+		Created(AccountId, KittyIndex),
+		/// A kitty is transferred. (from, to, kitty_id)
+		Transferred(AccountId, AccountId, KittyIndex),
+		/// A kitty is available for sale. (owner, kitty_id, price)
+		Ask(AccountId, KittyIndex, Option<Balance>),
+		/// A kitty is sold. (from, to, kitty_id, price)
+		Sold(AccountId, AccountId, KittyIndex, Balance),
+	}
+);
+
 decl_module! {
 	pub struct Module<T: Trait> for enum Call where origin: T::Origin {
+		fn deposit_event() = default;
+
 		/// Create a new kitty
 		pub fn create(origin) {
 			let sender = ensure_signed(origin)?;
@@ -57,102 +69,68 @@ decl_module! {
 			let dna = Self::random_value(&sender);
 
 			// Create and store kitty
-			Self::insert_kitty(&sender, kitty_id, Kitty {
-				dna,
-				price: 0.into(),
-			});
+			let kitty = Kitty(dna);
+			Self::insert_kitty(&sender, kitty_id, kitty);
+
+			Self::deposit_event(RawEvent::Created(sender, kitty_id));
 		}
 
 		/// Breed kitties
 		pub fn breed(origin, kitty_id_1: T::KittyIndex, kitty_id_2: T::KittyIndex) {
 			let sender = ensure_signed(origin)?;
 
-			Self::do_breed(&sender, kitty_id_1, kitty_id_2)?;
+			let new_kitty_id = Self::do_breed(&sender, kitty_id_1, kitty_id_2)?;
+
+			Self::deposit_event(RawEvent::Created(sender, new_kitty_id));
 		}
 
-		/// Transfer kitty
-		pub fn transfer(origin, to: T::AccountId, kitty_id: T::KittyIndex) {
+		/// Transfer a kitty to new owner
+ 		pub fn transfer(origin, to: T::AccountId, kitty_id: T::KittyIndex) {
+ 			let sender = ensure_signed(origin)?;
+
+  			ensure!(<OwnedKitties<T>>::exists(&(sender.clone(), Some(kitty_id))), "Only owner can transfer kitty");
+
+			Self::do_transfer(&sender, &to, kitty_id);
+
+			Self::deposit_event(RawEvent::Transferred(sender, to, kitty_id));
+		}
+
+		/// Set a price for a kitty for sale
+		/// None to delist the kitty
+		pub fn ask(origin, kitty_id: T::KittyIndex, price: Option<BalanceOf<T>>) {
 			let sender = ensure_signed(origin)?;
 
-			Self::do_transfer(&sender, &to, kitty_id)?;
+			ensure!(<OwnedKitties<T>>::exists(&(sender.clone(), Some(kitty_id))), "Only owner can set price for kitty");
+
+			if let Some(ref price) = price {
+				<KittyPrices<T>>::insert(kitty_id, price);
+			} else {
+				<KittyPrices<T>>::remove(kitty_id);
+			}
+
+			Self::deposit_event(RawEvent::Ask(sender, kitty_id, price));
 		}
 
-		/// Set price for owned kitty
-		pub fn set_price(origin, kitty_id: T::KittyIndex, #[compact] price: BalanceOf<T>) {
+		pub fn buy(origin, kitty_id: T::KittyIndex, price: BalanceOf<T>) {
 			let sender = ensure_signed(origin)?;
 
-			Self::do_set_price(&sender, kitty_id, price)?;
-		}
+			let owner = Self::kitty_owner(kitty_id);
+			ensure!(owner.is_some(), "Kitty does not exist");
+			let owner = owner.unwrap();
 
-		/// Buy some kitty according to price
-		pub fn buy(origin, owner: T::AccountId, kitty_id: T::KittyIndex) {
-			let sender = ensure_signed(origin)?;
+			let kitty_price = Self::kitty_price(kitty_id);
+			ensure!(kitty_price.is_some(), "Kitty not for sale");
 
-			Self::do_buy(&sender, &owner, kitty_id)?;
-		}
-	}
-}
+			let kitty_price = kitty_price.unwrap();
+			ensure!(price >= kitty_price, "Price is too low");
 
-impl<T: Trait> OwnedKitties<T> {
-	fn read_head(account: &T::AccountId) -> KittyLinkedItem<T> {
- 		Self::read(account, None)
- 	}
+			T::Currency::transfer(&sender, &owner, kitty_price)?;
 
-	fn write_head(account: &T::AccountId, item: KittyLinkedItem<T>) {
- 		Self::write(account, None, item);
- 	}
+			<KittyPrices<T>>::remove(kitty_id);
 
-	fn read(account: &T::AccountId, key: Option<T::KittyIndex>) -> KittyLinkedItem<T> {
- 		<OwnedKitties<T>>::get(&(account.clone(), key)).unwrap_or_else(|| KittyLinkedItem {
- 			prev: None,
- 			next: None,
- 		})
- 	}
+			Self::do_transfer(&owner, &sender, kitty_id);
 
-	fn write(account: &T::AccountId, key: Option<T::KittyIndex>, item: KittyLinkedItem<T>) {
- 		<OwnedKitties<T>>::insert(&(account.clone(), key), item);
- 	}
-
-	pub fn append(account: &T::AccountId, kitty_id: T::KittyIndex) {
-		let head = Self::read_head(account);
-		let new_head = KittyLinkedItem {
- 			prev: Some(kitty_id),
- 			next: head.next,
- 		};
-
-		Self::write_head(account, new_head);
-
-		let prev = Self::read(account, head.prev);
-		let new_prev = KittyLinkedItem {
- 			prev: prev.prev,
- 			next: Some(kitty_id),
- 		};
-		Self::write(account, head.prev, new_prev);
-
-		let item = KittyLinkedItem {
- 			prev: head.prev,
- 			next: None,
- 		};
- 		Self::write(account, Some(kitty_id), item);
-	}
-
-	pub fn remove(account: &T::AccountId, kitty_id: T::KittyIndex) {
-		if let Some(item) = <OwnedKitties<T>>::take(&(account.clone(), Some(kitty_id))) {
-			let prev = Self::read(account, item.prev);
-			let new_prev = KittyLinkedItem {
- 				prev: prev.prev,
- 				next: item.next,
- 			};
-
-			Self::write(account, item.prev, new_prev);
-
-			let next = Self::read(account, item.next);
- 			let new_next = KittyLinkedItem {
- 				prev: item.prev,
- 				next: next.next,
- 			};
-
-  			Self::write(account, item.next, new_next);
+			Self::deposit_event(RawEvent::Sold(owner, sender, kitty_id, kitty_price));
 		}
 	}
 }
@@ -176,34 +154,32 @@ impl<T: Trait> Module<T> {
 	}
 
 	fn insert_owned_kitty(owner: &T::AccountId, kitty_id: T::KittyIndex) {
-		// 作业：调用 OwnedKitties::append 完成实现
-		// 确保不存在
-		let kitty_linked_item = Self::owned_kitties(&(owner.clone(), Some(kitty_id)));
-		if kitty_linked_item.is_none() {
-			<OwnedKitties<T>>::append(owner, kitty_id);
-		}
-  }
+		<OwnedKittiesList<T>>::append(owner, kitty_id);
+	}
 
-	fn insert_kitty(owner: &T::AccountId, kitty_id: T::KittyIndex, kitty: Kitty<T>) {
+	fn insert_kitty(owner: &T::AccountId, kitty_id: T::KittyIndex, kitty: Kitty) {
 		// Create and store kitty
 		<Kitties<T>>::insert(kitty_id, kitty);
 		<KittiesCount<T>>::put(kitty_id + 1.into());
+		<KittyOwners<T>>::insert(kitty_id, owner.clone());
 
 		Self::insert_owned_kitty(owner, kitty_id);
 	}
 
-	fn do_breed(sender: &T::AccountId, kitty_id_1: T::KittyIndex, kitty_id_2: T::KittyIndex) -> Result {
+	fn do_breed(sender: &T::AccountId, kitty_id_1: T::KittyIndex, kitty_id_2: T::KittyIndex) -> result::Result<T::KittyIndex, &'static str> {
 		let kitty1 = Self::kitty(kitty_id_1);
 		let kitty2 = Self::kitty(kitty_id_2);
 
 		ensure!(kitty1.is_some(), "Invalid kitty_id_1");
 		ensure!(kitty2.is_some(), "Invalid kitty_id_2");
 		ensure!(kitty_id_1 != kitty_id_2, "Needs different parent");
+		ensure!(Self::kitty_owner(&kitty_id_1).map(|owner| owner == *sender).unwrap_or(false), "Not onwer of kitty1");
+ 		ensure!(Self::kitty_owner(&kitty_id_2).map(|owner| owner == *sender).unwrap_or(false), "Not owner of kitty2");
 
 		let kitty_id = Self::next_kitty_id()?;
 
-		let kitty1_dna = kitty1.unwrap().dna;
-		let kitty2_dna = kitty2.unwrap().dna;
+		let kitty1_dna = kitty1.unwrap().0;
+		let kitty2_dna = kitty2.unwrap().0;
 
 		// Generate a random 128bit value
 		let selector = Self::random_value(&sender);
@@ -214,79 +190,16 @@ impl<T: Trait> Module<T> {
 			new_dna[i] = combine_dna(kitty1_dna[i], kitty2_dna[i], selector[i]);
 		}
 
-		Self::insert_kitty(sender, kitty_id, Kitty {
-			dna: new_dna,
-			price: 0.into(),
-		});
+		Self::insert_kitty(sender, kitty_id, Kitty(new_dna));
 
-		Ok(())
+		Ok(kitty_id)
 	}
 
-	fn _ensure_kitty_and_owner(owner: &T::AccountId, kitty_id: T::KittyIndex) -> result::Result<Kitty<T>, &'static str> {
-		let kitty = Self::kitty(kitty_id);
-		ensure!(kitty.is_some(), "Invalid kitty_id");
-
-		// 确保OwnerLinkedItem存在，存在即主人
-		let kitty_linked_item = Self::owned_kitties(&(owner.clone(), Some(kitty_id)));
-		ensure!(kitty_linked_item.is_some(), "kitty_id is not owned by sender");
-
-		Ok(kitty.unwrap())
-	}
-
-	fn _transfer(sender: &T::AccountId, to: &T::AccountId, kitty_id: T::KittyIndex) {
-		// 移除原主人的小猫
-		<OwnedKitties<T>>::remove(sender, kitty_id);
-		// 添加到新主人
-		<OwnedKitties<T>>::append(to, kitty_id);
-	}
-
-	// 作业：实现 transfer(origin, to: T::AccountId, kitty_id: T::KittyIndex)
-	// 使用 ensure! 来保证只有主人才有权限调用 transfer
-	// 使用 OwnedKitties::append 和 OwnedKitties::remove 来修改小猫的主人
-	fn do_transfer(sender: &T::AccountId, to: &T::AccountId, kitty_id: T::KittyIndex) -> Result {
-		ensure!(sender != to, "cannot send to same");
-
-		Self::_ensure_kitty_and_owner(sender, kitty_id)?;
-		Self::_transfer(sender, to, kitty_id);
-		Ok(())
-	}
-
-	fn do_set_price(owner: &T::AccountId, kitty_id: T::KittyIndex, price: BalanceOf<T>) -> Result {
-		Self::_ensure_kitty_and_owner(owner, kitty_id)?;
-
-		<Kitties<T>>::mutate(kitty_id, |kitty| {
-			if let Some(one) = kitty {
-				one.price = price.clone();
-			}
-		});
-		Ok(())
-	}
-
-	fn do_buy(buyer: &T::AccountId, owner: &T::AccountId, kitty_id: T::KittyIndex) -> Result {
-		ensure!(buyer != owner, "cannot send to same");
-
-		let kitty = Self::_ensure_kitty_and_owner(owner, kitty_id)?;
-
-		// ensure enough balance
-		let buyer_free_balance = T::Currency::free_balance(buyer);
-		if let Some(new_buyer_free_balance) = buyer_free_balance.checked_sub(&kitty.price) {
-			// check transfer balance
-			T::Currency::ensure_can_withdraw(buyer, kitty.price.clone(), WithdrawReason::Transfer, new_buyer_free_balance)?;
-		} else {
-			return Err("not enough balance of buyer")
-		}
-
-		// overflow check for owner
-		let owner_free_balance = T::Currency::free_balance(owner);
-		owner_free_balance.checked_add(&kitty.price).ok_or("cannot add more balance to kitty owner")?;
-
-		// do currency transfer
-		T::Currency::transfer(buyer, owner, kitty.price)?;
-		// do kitty transfer
-		Self::_transfer(owner, buyer, kitty_id);
-
-		Ok(())
-	}
+	fn do_transfer(from: &T::AccountId, to: &T::AccountId, kitty_id: T::KittyIndex)  {
+ 		<OwnedKittiesList<T>>::remove(&from, kitty_id);
+ 		<OwnedKittiesList<T>>::append(&to, kitty_id);
+ 		<KittyOwners<T>>::insert(kitty_id, to);
+ 	}
 }
 
 /// tests for this module
@@ -334,31 +247,8 @@ mod tests {
 		type AvailableBlockRatio = AvailableBlockRatio;
 		type Version = ();
 	}
-	pub type Balance = u64;
-	parameter_types! {
-		pub const TransferFee: Balance = 0;
-		pub const CreationFee: Balance = 0;
-		pub const TransactionBaseFee: u64 = 0;
-		pub const TransactionByteFee: u64 = 0;
-	}
-	impl balances::Trait for Test {
-		type Balance = Balance;
-		type OnFreeBalanceZero = ();
-		type OnNewAccount = ();
-		type Event = ();
-		type TransactionPayment = ();
-		type TransferPayment = ();
-		type DustRemoval = ();
-		type ExistentialDeposit = ();
-		type TransferFee = TransferFee;
-		type CreationFee = CreationFee;
-		type TransactionBaseFee = TransactionBaseFee;
-		type TransactionByteFee = TransactionByteFee;
-		type WeightToFee = ();
-	}
 	impl Trait for Test {
 		type KittyIndex = u32;
-		type Currency = balances::Module<Self>;
 	}
 	type OwnedKittiesTest = OwnedKitties<Test>;
 
