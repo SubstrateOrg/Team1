@@ -37,9 +37,36 @@ impl<Storage, Key, Value> LinkedList<Storage, Key, Value> where
 
     pub fn append(key: &Key, value: Value) {
         // 作业：实现 append
+				let mut head = Self::read_head(&key);
+				let mut last = Self::read(&key,head.prev);
+				let new_item = LinkedItem {
+					prev: head.prev,
+					next: None,
+				};
+				let old_prev = head.prev;
+				head.prev = Some(value);
+				// 第一个元素的话
+				if head.next == None {
+					head.next = Some(value);
+				}
+				last.next = Some(value);
+				Self::write(&key,old_prev,last);
+				Self::write(&key,None,head);
+
+				Self::write(&key,Some(value),new_item);
+
     }
 
     pub fn remove(key: &Key, value: Value) {
         // 作业：实现 remove
+				let  item = Self::read(&key,Some(value));
+				let mut prev_item = Self::read(&key,item.prev); 
+				prev_item.next = item.next;
+				Self::write(&key,item.prev,prev_item);
+
+				let mut next_item = Self::read(&key,item.next); 
+				next_item.prev = item.prev;
+				Self::write(&key,item.next,next_item);
+				Storage::remove(&(key.clone(), Some(value)));
     }
 }
