@@ -20,9 +20,7 @@ type BalanceOf<T> = <<T as Trait>::Currency as Currency<<T as system::Trait>::Ac
 // #[derive(Encode, Decode)]
 pub struct Kitty(pub [u8; 16]);
 impl codec::Encode for Kitty {
-	fn encode_to<EncOut: codec::Output>(&self,
-													  dest:
-													  &mut EncOut) {
+	fn encode_to<EncOut: codec::Output>(&self, dest: &mut EncOut) {
 		codec::Encode::encode_to(&&self.0, dest)
 	}
 	fn encode(&self) -> codec::alloc::vec::Vec<u8> {
