@@ -10,7 +10,17 @@ pub struct LinkedItem<Value> {
 }
 
 pub struct LinkedList<Storage, Key, Value>(rstd::marker::PhantomData<(Storage, Key, Value)>);
-
+impl<Storage, Key, Value> codec::Encode for LinkedList<Storage, Key, Value> {
+	fn encode_to<EncOut: codec::Output>(&self, dest: &mut EncOut) {
+		codec::Encode::encode_to(&&self.0, dest)
+	}
+	fn encode(&self) -> codec::alloc::vec::Vec<u8> {
+		codec::Encode::encode(&&self.0)
+	}
+	fn using_encoded<R, F: FnOnce(&[u8]) -> R>(&self, f: F) -> R {
+		codec::Encode::using_encoded(&&self.0, f)
+	}
+}
 impl<Storage, Key, Value> LinkedList<Storage, Key, Value> where
     Value: Parameter + Member + Copy,
     Key: Parameter,

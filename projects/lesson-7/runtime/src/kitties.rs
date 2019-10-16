@@ -17,8 +17,33 @@ pub trait Trait: system::Trait {
 
 type BalanceOf<T> = <<T as Trait>::Currency as Currency<<T as system::Trait>::AccountId>>::Balance;
 
-#[derive(Encode, Decode)]
+// #[derive(Encode, Decode)]
 pub struct Kitty(pub [u8; 16]);
+impl codec::Encode for Kitty {
+	fn encode_to<EncOut: codec::Output>(&self, dest: &mut EncOut) {
+		codec::Encode::encode_to(&&self.0, dest)
+	}
+	fn encode(&self) -> codec::alloc::vec::Vec<u8> {
+		codec::Encode::encode(&&self.0)
+	}
+	fn using_encoded<R, F: FnOnce(&[u8]) -> R>(&self, f: F) -> R {
+		codec::Encode::using_encoded(&&self.0, f)
+	}
+}
+impl codec::Decode for Kitty {
+	fn decode<DecIn: codec::Input>(input:&mut DecIn)
+		-> core::result::Result<Self, codec::Error> {
+		Ok(Kitty({
+			let res =
+				codec::Decode::decode(input);
+			match res {
+				Err(_) =>
+					return Err("Error decoding field Kitty.0".into()),
+				Ok(a) => a,
+			}
+		}))
+	}
+}
 
 type KittyLinkedItem<T> = LinkedItem<<T as Trait>::KittyIndex>;
 type OwnedKittiesList<T> = LinkedList<OwnedKitties<T>, <T as system::Trait>::AccountId, <T as Trait>::KittyIndex>;
